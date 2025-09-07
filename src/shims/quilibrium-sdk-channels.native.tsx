@@ -1,25 +1,46 @@
 /**
- * MOBILE SDK SHIM - TEMPORARY IMPLEMENTATION
- * ==========================================
+ * MOBILE SDK INTEGRATION WITH FALLBACK
+ * =====================================
  * 
- * This is a mock implementation of the Quilibrium SDK for React Native.
- * The actual SDK has Node.js and WebAssembly dependencies that are incompatible
- * with React Native's runtime environment.
+ * This module attempts to load the real Quilibrium SDK for React Native.
+ * If the SDK fails to load (due to WASM or other incompatibilities),
+ * it falls back to a mock implementation.
  * 
- * TODO: When implementing real SDK integration:
- * 1. Replace this entire file with actual React Native compatible SDK
- * 2. Consider using one of these approaches:
- *    - Server-side proxy for passkey operations
- *    - Native modules for iOS/Android passkey APIs
- *    - Modified SDK build without Node.js/WASM dependencies
+ * Status: Testing real SDK integration with Expo Dev Build
  * 
- * IMPORTANT: All methods currently return mock data or no-ops.
- * Passkey functionality is NOT available on mobile until properly implemented.
- * 
- * See: .readme/tasks/todo/mobile-sdk-integration-issue.md for full details
+ * See: .readme/tasks/todo/mobile-dev/passkey-sdk-expo-dev-integration-plan.md
  */
 
 import React, { createContext, useContext, ReactNode, useState } from 'react';
+
+// ============================================================================
+// LAZY SDK LOADING - Delay loading to avoid hooks issues
+// ============================================================================
+
+let realSDK: any = null;
+let isRealSDK = false;
+let sdkLoadError: Error | null = null;
+let loadAttempted = false;
+
+const loadRealSDK = () => {
+  if (loadAttempted) return realSDK;
+  loadAttempted = true;
+  
+  try {
+    console.log('[SDK] Attempting to load real Quilibrium SDK...');
+    // Try to import the real SDK
+    realSDK = require('@quilibrium/quilibrium-js-sdk-channels');
+    isRealSDK = true;
+    console.log('[SDK] ✅ Successfully loaded real Quilibrium SDK');
+    console.log('[SDK] Available exports:', Object.keys(realSDK || {}));
+    return realSDK;
+  } catch (error: any) {
+    sdkLoadError = error;
+    console.warn('[SDK] ⚠️ Failed to load real SDK, will use mock implementation');
+    console.warn('[SDK] Error:', error?.message || error);
+    return null;
+  }
+};
 
 // ============================================================================
 // TYPE DEFINITIONS - Must match the real SDK interface
@@ -83,38 +104,19 @@ export interface PasskeysContextType {
 // CHANNEL_RAW MOCK - Basic channel operations without encryption
 // ============================================================================
 
-export const channel_raw = {
-  /**
-   * TODO: Implement actual message validation
-   * Currently returns true for all inputs
-   */
+const channel_raw_mock = {
   validateMessage: (message: any): boolean => {
     console.warn('[SDK Mock] validateMessage called - returning true');
     return true;
   },
-
-  /**
-   * TODO: Implement actual signature verification
-   * Currently returns true for all inputs
-   */
   verifySignature: (message: any, signature: any, publicKey: any): boolean => {
     console.warn('[SDK Mock] verifySignature called - returning true');
     return true;
   },
-
-  /**
-   * TODO: Implement actual message parsing
-   * Currently returns the input as-is
-   */
   parseMessage: (message: any): any => {
     console.warn('[SDK Mock] parseMessage called - returning input');
     return message;
   },
-
-  /**
-   * TODO: Implement actual key generation
-   * Currently returns mock keys
-   */
   generateKeyset: (): { privateKey: string; publicKey: string; address: string } => {
     console.warn('[SDK Mock] generateKeyset called - returning mock keys');
     return {
@@ -129,37 +131,15 @@ export const channel_raw = {
 // CHANNEL MOCK - Secure channel operations with encryption
 // ============================================================================
 
-export const channel = {
-  /**
-   * TODO: Implement actual user registration upload
-   * This should interact with the backend API
-   */
+const channel_mock = {
   uploadUserRegistration: async (registration: any): Promise<void> => {
     console.warn('[SDK Mock] uploadUserRegistration called - no-op');
-    // In real implementation, this would:
-    // 1. Validate the registration data
-    // 2. Sign it with the user's private key
-    // 3. Upload to the backend
     return Promise.resolve();
   },
-
-  /**
-   * TODO: Implement actual user lookup
-   * Should query the backend for user information
-   */
   lookupUser: async (address: string): Promise<UserRegistration | null> => {
     console.warn(`[SDK Mock] lookupUser called for ${address} - returning null`);
-    // In real implementation, this would:
-    // 1. Query the backend API for user with given address
-    // 2. Verify the response signature
-    // 3. Return the user data
     return Promise.resolve(null);
   },
-
-  /**
-   * TODO: Implement actual message encryption
-   * Should use proper E2E encryption
-   */
   encryptMessage: (message: any, recipientPublicKey: string): any => {
     console.warn('[SDK Mock] encryptMessage called - returning mock encrypted data');
     return {
@@ -168,25 +148,14 @@ export const channel = {
       recipientKey: recipientPublicKey,
     };
   },
-
-  /**
-   * TODO: Implement actual message decryption
-   * Should decrypt E2E encrypted messages
-   */
   decryptMessage: (encryptedMessage: any, privateKey: string): any => {
     console.warn('[SDK Mock] decryptMessage called - returning mock decrypted data');
     return encryptedMessage.data || encryptedMessage;
   },
-
-  /**
-   * TODO: Implement actual message signing
-   * Should sign messages with private key
-   */
   signMessage: (message: any, privateKey: string): string => {
     console.warn('[SDK Mock] signMessage called - returning mock signature');
     return 'mock_signature_' + Math.random().toString(36).substr(2, 9);
   },
-
   // Re-export UserKeyset and DeviceKeyset types
   UserKeyset: {} as any,
   DeviceKeyset: {} as any,
@@ -199,15 +168,7 @@ export const channel = {
 
 const PasskeysContext = createContext<PasskeysContextType | null>(null);
 
-/**
- * TODO: Implement actual passkey provider for React Native
- * This should handle:
- * - Secure storage of keys (using Keychain/Keystore)
- * - Biometric authentication
- * - Session management
- */
-export const PasskeysProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // TODO: Replace with actual state management
+const PasskeysProviderMock: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Mock passkey info for testing mobile onboarding - using state for updates
   const [mockPasskeyInfo, setMockPasskeyInfo] = useState<PasskeyInfo & Partial<StoredPasskey>>({
     credentialId: 'mock_credential_id_12345',
@@ -251,7 +212,6 @@ export const PasskeysProvider: React.FC<{ children: ReactNode }> = ({ children }
       throw new Error('Account deletion not available on mobile');
     },
 
-    // Add updateStoredPasskey method for onboarding flow
     updateStoredPasskey: (credentialId: string, updates: Partial<StoredPasskey>) => {
       console.warn('[SDK Mock] updateStoredPasskey called with:', updates);
       setMockPasskeyInfo(prev => ({
@@ -260,7 +220,6 @@ export const PasskeysProvider: React.FC<{ children: ReactNode }> = ({ children }
       }));
     },
 
-    // Add exportKey method for key backup functionality
     exportKey: async (address: string): Promise<string> => {
       console.warn('[SDK Mock] exportKey called - returning mock key data');
       return JSON.stringify({
@@ -280,15 +239,9 @@ export const PasskeysProvider: React.FC<{ children: ReactNode }> = ({ children }
   );
 };
 
-/**
- * Hook to use passkeys context
- * TODO: When implementing real SDK, ensure this returns actual auth state
- */
-export const usePasskeysContext = (): PasskeysContextType => {
+const usePasskeysContextMock = (): PasskeysContextType => {
   const context = useContext(PasskeysContext);
   if (!context) {
-    // Return a default mock context to prevent crashes
-    // TODO: In production, this should properly handle missing provider
     console.warn('[SDK Mock] usePasskeysContext called outside provider - returning mock');
     return {
       address: null,
@@ -314,8 +267,65 @@ export const usePasskeysContext = (): PasskeysContextType => {
 // PASSKEY NAMESPACE EXPORT
 // ============================================================================
 
-export const passkey = {
+const passkey_mock = {
   StoredPasskey: {} as StoredPasskey, // Type export for compatibility
+};
+
+// ============================================================================
+// LAZY EXPORTS - Try real SDK first, fall back to mocks
+// ============================================================================
+
+// Export getters that attempt to load real SDK on first access
+export const channel = new Proxy({} as any, {
+  get(target, prop) {
+    const sdk = loadRealSDK();
+    if (sdk && sdk.channel) {
+      return sdk.channel[prop];
+    }
+    return channel_mock[prop];
+  }
+});
+
+export const channel_raw = new Proxy({} as any, {
+  get(target, prop) {
+    const sdk = loadRealSDK();
+    if (sdk && sdk.channel_raw) {
+      return sdk.channel_raw[prop];
+    }
+    return channel_raw_mock[prop];
+  }
+});
+
+export const passkey = new Proxy({} as any, {
+  get(target, prop) {
+    const sdk = loadRealSDK();
+    if (sdk && sdk.passkey) {
+      return sdk.passkey[prop];
+    }
+    return passkey_mock[prop];
+  }
+});
+
+// For React components, we need to export them directly (can't use Proxy)
+export const PasskeysProvider: React.FC<{ children: ReactNode }> = (props) => {
+  const sdk = loadRealSDK();
+  if (sdk && sdk.PasskeysProvider) {
+    const RealProvider = sdk.PasskeysProvider;
+    return <RealProvider {...props} />;
+  }
+  return <PasskeysProviderMock {...props} />;
+};
+
+export const usePasskeysContext = (): PasskeysContextType => {
+  const sdk = loadRealSDK();
+  if (sdk && sdk.usePasskeysContext) {
+    try {
+      return sdk.usePasskeysContext();
+    } catch (error) {
+      console.warn('[SDK] Real usePasskeysContext failed, using mock:', error);
+    }
+  }
+  return usePasskeysContextMock();
 };
 
 // ============================================================================
@@ -331,31 +341,16 @@ export default {
 };
 
 /**
- * IMPLEMENTATION NOTES FOR REAL SDK:
- * ===================================
+ * IMPLEMENTATION NOTES:
+ * =====================
  * 
- * 1. Crypto Operations:
- *    - Use react-native-crypto or expo-crypto for cryptographic operations
- *    - Consider using SubtleCrypto polyfill for React Native
+ * Current Status:
+ * - SDK loading is deferred until first use to avoid React hooks issues
+ * - Uses Proxy objects to dynamically switch between real and mock implementations
+ * - React components are wrapped to handle the conditional loading
  * 
- * 2. Key Storage:
- *    - iOS: Use Keychain Services
- *    - Android: Use Android Keystore
- *    - Consider expo-secure-store for simpler implementation
- * 
- * 3. WebAssembly Replacement:
- *    - Port WASM functionality to pure JavaScript
- *    - Or use native modules for performance-critical operations
- * 
- * 4. Biometric Authentication:
- *    - Use expo-local-authentication or react-native-biometrics
- *    - Tie passkey operations to biometric verification
- * 
- * 5. Network Communication:
- *    - Ensure all API calls work with React Native's fetch
- *    - Handle offline scenarios appropriately
- * 
- * 6. Testing:
- *    - Create comprehensive tests for all mocked methods
- *    - Ensure feature parity with web implementation
+ * Known Issues:
+ * - WebAssembly features will not work (stubbed in polyfills)
+ * - Some crypto operations may fail if they rely on WASM
+ * - Passkey authentication needs native module implementation
  */

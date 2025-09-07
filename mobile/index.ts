@@ -1,3 +1,7 @@
+// IMPORTANT: Shims and polyfills must be imported first!
+import './shim';
+import './polyfills';
+
 import { registerRootComponent } from 'expo';
 
 // Test playground app (change to './App' for production app)

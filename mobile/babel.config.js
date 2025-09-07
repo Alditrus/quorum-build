@@ -1,7 +1,15 @@
 module.exports = function (api) {
   api.cache(true);
   return {
-    presets: ['babel-preset-expo'],
+    presets: [
+      [
+        'babel-preset-expo',
+        {
+          // Enable import.meta support for the SDK
+          unstable_transformImportMeta: true,
+        },
+      ],
+    ],
     plugins: [
       '@lingui/babel-plugin-lingui-macro',
       [
