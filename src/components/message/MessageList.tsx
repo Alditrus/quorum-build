@@ -33,6 +33,8 @@ export const MessageList = ({
   roles,
   kickUserAddress,
   setKickUserAddress,
+  onPinMessage,
+  pinnedMessageId,
 }: {
   messageList: MessageType[];
   stickers?: {[stickerId: string]: Sticker};
@@ -48,6 +50,8 @@ export const MessageList = ({
   roles: Role[];
   kickUserAddress?: string;
   setKickUserAddress?: React.Dispatch<React.SetStateAction<string | undefined>>;
+  onPinMessage?: (messageId: string) => void;
+  pinnedMessageId?: string;
 }) => {
   const [width, height] = useWindowSize();
   const [hoverTarget, setHoverTarget] = useState<string>();
@@ -92,6 +96,8 @@ export const MessageList = ({
         submitMessage={submitMessage}
         kickUserAddress={kickUserAddress}
         setKickUserAddress={setKickUserAddress}
+        onPinMessage={onPinMessage}
+        isPinned={message.messageId === pinnedMessageId}
       />
     );
   };

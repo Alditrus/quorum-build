@@ -18,6 +18,9 @@ import { useSpaceOwner } from '../../hooks/queries/spaceOwner';
 import { MessageList } from '../message/MessageList';
 import { FileWithPath, useDropzone } from 'react-dropzone';
 import Compressor from 'compressorjs';
+import { PinnedMessageNotification } from '../message/PinnedMessageNotification';
+import { PinnedMessageOverlay } from '../message/PinnedMessageOverlay';
+import Modal from '../Modal';
 
 type ChannelProps = {
   spaceId: string;
@@ -52,8 +55,12 @@ const Channel: React.FC<ChannelProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [inReplyTo, setInReplyTo] = useState<MessageType>();
+  const [showPinnedOverlay, setShowPinnedOverlay] = useState(false);
+  const [showUnpinModal, setShowUnpinModal] = useState(false);
+  const [showReplaceModal, setShowReplaceModal] = useState(false);
+  const [pendingPinMessageId, setPendingPinMessageId] = useState<string>();
   const editor = useRef<HTMLTextAreaElement>(null);
-  const { submitChannelMessage } = useMessageDB();
+  const { submitChannelMessage, updateSpace } = useMessageDB();
   const { data: spaceMembers } = useSpaceMembers({ spaceId });
   const { data: isSpaceOwner } = useSpaceOwner({ spaceId });
   const [fileData, setFileData] = React.useState<ArrayBuffer | undefined>();
@@ -176,11 +183,102 @@ const Channel: React.FC<ChannelProps> = ({
     );
   }, [messages, fetchPreviousPage]);
 
+  const pinnedMessage = useMemo(() => {
+    if (!channel?.pinnedMessageId) return undefined;
+    return messageList.find((m) => m.messageId === channel.pinnedMessageId);
+  }, [channel?.pinnedMessageId, messageList]);
+
+  const handlePinMessage = async (messageId: string) => {
+    const isPinningCurrentPin = messageId === channel?.pinnedMessageId;
+
+    if (isPinningCurrentPin) {
+      // Clicking pin on already pinned message - show unpin modal
+      setShowUnpinModal(true);
+    } else if (channel?.pinnedMessageId) {
+      // There's already a pinned message - show replace modal
+      setPendingPinMessageId(messageId);
+      setShowReplaceModal(true);
+    } else {
+      // No pinned message - pin directly
+      await pinMessage(messageId);
+    }
+  };
+
+  const pinMessage = async (messageId: string) => {
+    if (space && channel) {
+      const updatedSpace = {
+        ...space,
+        groups: space.groups.map((g) => ({
+          ...g,
+          channels: g.channels.map((c) =>
+            c.channelId === channelId
+              ? { ...c, pinnedMessageId: messageId, modifiedDate: Date.now() }
+              : c
+          ),
+        })),
+      };
+      await updateSpace(updatedSpace);
+    }
+  };
+
+  const clearPin = async () => {
+    if (space && channel) {
+      const updatedSpace = {
+        ...space,
+        groups: space.groups.map((g) => ({
+          ...g,
+          channels: g.channels.map((c) =>
+            c.channelId === channelId
+              ? { ...c, pinnedMessageId: undefined, modifiedDate: Date.now() }
+              : c
+          ),
+        })),
+      };
+      await updateSpace(updatedSpace);
+    }
+  };
+
+  const unpinMessage = async () => {
+    await clearPin();
+    setShowUnpinModal(false);
+  };
+
+  const confirmReplace = async () => {
+    if (pendingPinMessageId) {
+      await pinMessage(pendingPinMessageId);
+      setPendingPinMessageId(undefined);
+    }
+    setShowReplaceModal(false);
+  };
+
   useEffect(() => {
     if (!init) {
       setTimeout(() => setInit(true), 200);
     }
   }, []);
+
+  // Auto-clear pin when pinned message is deleted
+  useEffect(() => {
+    if (channel?.pinnedMessageId && !pinnedMessage && messageList.length > 0 && space) {
+      // Channel has a pinned message ID but the message doesn't exist
+      // This means the pinned message was deleted - auto-clear the pin
+      const autoClearPin = async () => {
+        const updatedSpace = {
+          ...space,
+          groups: space.groups.map((g) => ({
+            ...g,
+            channels: g.channels.map((c) =>
+              c.channelId === channelId
+                ? { ...c, pinnedMessageId: undefined, modifiedDate: Date.now() }
+                : c
+            ),
+          })),
+        };
+        await updateSpace(updatedSpace);
+      };
+      autoClearPin();
+    }
+  }, [channel?.pinnedMessageId, pinnedMessage, messageList.length, space, channelId, updateSpace]);
 
   const submit = async (message: string | object) => {
     await submitChannelMessage(
@@ -242,6 +340,35 @@ const Channel: React.FC<ChannelProps> = ({
             />
           </span>
         </div>
+        {pinnedMessage && !showPinnedOverlay && (
+          <PinnedMessageNotification
+            message={pinnedMessage}
+            onClick={() => setShowPinnedOverlay(true)}
+          />
+        )}
+        {pinnedMessage && showPinnedOverlay && (
+          <PinnedMessageOverlay
+            message={pinnedMessage}
+            messageList={messageList}
+            onClose={() => setShowPinnedOverlay(false)}
+            mapSenderToUser={mapSenderToUser}
+            customEmoji={space?.emojis}
+            stickers={stickers}
+            senderRoles={roles.filter((r) =>
+              r.members.includes(pinnedMessage.content.senderId)
+            )}
+            canEditRoles={isSpaceOwner}
+            canDeleteMessages={canDeleteMessages(pinnedMessage)}
+            setInReplyTo={setInReplyTo}
+            repudiability={space?.isRepudiable}
+            editorRef={editor.current}
+            height={window.innerHeight}
+            submitMessage={submit}
+            kickUserAddress={kickUserAddress}
+            setKickUserAddress={setKickUserAddress}
+            onPinMessage={handlePinMessage}
+          />
+        )}
         <div
           className={
             'message-list' + (!showUsers ? ' message-list-expanded' : '')
@@ -261,6 +388,8 @@ const Channel: React.FC<ChannelProps> = ({
             submitMessage={submit}
             kickUserAddress={kickUserAddress}
             setKickUserAddress={setKickUserAddress}
+            onPinMessage={handlePinMessage}
+            pinnedMessageId={channel?.pinnedMessageId}
             fetchPreviousPage={() => {
               fetchPreviousPage();
             }}
@@ -523,6 +652,58 @@ const Channel: React.FC<ChannelProps> = ({
           ))}
         </div>
       </div>
+      <Modal
+        visible={showUnpinModal}
+        onClose={() => setShowUnpinModal(false)}
+        title="Unpin Message"
+      >
+        <div className="p-4">
+          <p className="text-white mb-4">Unpin this message?</p>
+          <div className="flex flex-row gap-2 justify-end">
+            <button
+              onClick={() => setShowUnpinModal(false)}
+              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md"
+            >
+              No
+            </button>
+            <button
+              onClick={unpinMessage}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+            >
+              Yes
+            </button>
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        visible={showReplaceModal}
+        onClose={() => {
+          setShowReplaceModal(false);
+          setPendingPinMessageId(undefined);
+        }}
+        title="Replace Pinned Message"
+      >
+        <div className="p-4">
+          <p className="text-white mb-4">Replace current pin with new pin?</p>
+          <div className="flex flex-row gap-2 justify-end">
+            <button
+              onClick={() => {
+                setShowReplaceModal(false);
+                setPendingPinMessageId(undefined);
+              }}
+              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-md"
+            >
+              No
+            </button>
+            <button
+              onClick={confirmReplace}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+            >
+              Yes
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

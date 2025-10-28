@@ -58,6 +58,7 @@ export type Channel = {
   modifiedDate: number;
   mentionCount?: number;
   mentions?: string;
+  pinnedMessageId?: string;
 };
 
 export type Conversation = {

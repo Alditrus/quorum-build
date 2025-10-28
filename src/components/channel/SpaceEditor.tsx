@@ -6,7 +6,7 @@ import {
   channel,
 } from '@quilibrium/quilibrium-js-sdk-channels';
 import { useNavigate } from 'react-router';
-import { faChevronDown, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faChevronDown, faTrash, faX } from '@fortawesome/free-solid-svg-icons';
 
 import { useMessageDB } from '../context/MessageDB';
 import './SpaceEditor.scss';
@@ -26,6 +26,7 @@ import Input from '../Input';
 import { useQuorumApiClient } from '../context/QuorumApiContext';
 import { useRegistrationContext } from '../context/RegistrationPersister';
 import { Loading } from '../Loading';
+import { useSpaceMembers } from '../../hooks/queries/spaceMembers/useSpaceMembers';
 
 const SpaceEditor: React.FunctionComponent<{
   spaceId: string;
@@ -85,6 +86,8 @@ const SpaceEditor: React.FunctionComponent<{
   const { data: conversations } = useConversations({ type: 'direct' });
   const { apiClient } = useQuorumApiClient();
   const navigate = useNavigate();
+  const { data: spaceMembers } = useSpaceMembers({ spaceId });
+  const [memberSelectorRole, setMemberSelectorRole] = React.useState<string | null>(null);
 
   const { getRootProps, getInputProps, acceptedFiles } = useDropzone({
     accept: {
@@ -235,6 +238,34 @@ const SpaceEditor: React.FunctionComponent<{
     },
     [ensureKeyForSpace, currentPasskeyInfo, space]
   );
+
+  const toggleMemberInRole = React.useCallback((roleId: string, memberAddress: string) => {
+    setRoles((prev) =>
+      prev.map((role) =>
+        role.roleId === roleId
+          ? {
+              ...role,
+              members: role.members.includes(memberAddress)
+                ? role.members.filter((addr) => addr !== memberAddress)
+                : [...role.members, memberAddress],
+            }
+          : role
+      )
+    );
+  }, []);
+
+  const removeMemberFromRole = React.useCallback((roleId: string, memberAddress: string) => {
+    setRoles((prev) =>
+      prev.map((role) =>
+        role.roleId === roleId
+          ? {
+              ...role,
+              members: role.members.filter((addr) => addr !== memberAddress),
+            }
+          : role
+      )
+    );
+  }, []);
 
   const saveChanges = React.useCallback(() => {
     updateSpace({
@@ -525,97 +556,135 @@ const SpaceEditor: React.FunctionComponent<{
                   </div>
                   <div className="space-editor-content flex flex-col grow">
                     {roles.map((r, i) => {
+                      const activeMembers = spaceMembers.filter(
+                        (m) => m.inbox_address !== '' && r.members.includes(m.user_address)
+                      );
                       return (
                         <div
                           key={'space-editor-role-' + i}
-                          className="space-editor-content-section-header text-white"
+                          className="text-white mb-6"
                         >
-                          @
-                          <input
-                            className="font-mono border-0 bg-[rgba(0,0,0,0)] pr-2"
-                            style={{
-                              width:
-                                (roles.find((_, pi) => i == pi)?.roleTag
-                                  .length ?? 0) *
-                                  11 +
-                                11 +
-                                'px',
-                            }}
-                            onChange={(e) =>
-                              setRoles((prev) => [
-                                ...prev.map((p, pi) =>
-                                  pi == i
-                                    ? { ...p, roleTag: e.target.value }
-                                    : p
-                                ),
-                              ])
-                            }
-                            value={r.roleTag}
-                          />
-                          <span className="font-mono message-name-mentions-role">
+                          <div className="space-editor-content-section-header">
+                            @
                             <input
-                              className="border-0 bg-[rgba(0,0,0,0)] "
+                              className="font-mono border-0 bg-[rgba(0,0,0,0)] pr-2"
                               style={{
                                 width:
-                                  (roles.find((_, pi) => i == pi)?.displayName
+                                  (roles.find((_, pi) => i == pi)?.roleTag
                                     .length ?? 0) *
-                                    10 +
-                                  10 +
+                                    11 +
+                                  11 +
                                   'px',
                               }}
                               onChange={(e) =>
                                 setRoles((prev) => [
                                   ...prev.map((p, pi) =>
                                     pi == i
-                                      ? { ...p, displayName: e.target.value }
+                                      ? { ...p, roleTag: e.target.value }
                                       : p
                                   ),
                                 ])
                               }
-                              value={r.displayName}
+                              value={r.roleTag}
                             />
-                          </span>
-                          <span className="float-right">
-                            <FontAwesomeIcon
-                              icon={faTrash}
-                              onClick={() =>
-                                setRoles((prev) => [
-                                  ...prev.filter((p, pi) => i !== pi),
-                                ])
-                              }
-                            />
-                          </span>
-                          <span className="float-right pr-10">
-                            Can delete messages?{' '}
-                            <input
-                              type="checkbox"
-                              checked={roles
-                                .find((_, pi) => i == pi)
-                                ?.permissions.includes('message:delete')}
-                              onChange={() =>
-                                setRoles((prev) => [
-                                  ...prev.map((p, pi) =>
-                                    pi == i
-                                      ? {
-                                          ...p,
-                                          permissions: p.permissions.includes(
-                                            'message:delete'
-                                          )
-                                            ? p.permissions.filter(
-                                                (pr: Permission) =>
-                                                  pr !== 'message:delete'
-                                              )
-                                            : ([
-                                                ...p.permissions,
-                                                'message:delete',
-                                              ] as Permission[]),
-                                        }
-                                      : p
-                                  ),
-                                ])
-                              }
-                            />
-                          </span>
+                            <span className="font-mono message-name-mentions-role">
+                              <input
+                                className="border-0 bg-[rgba(0,0,0,0)] "
+                                style={{
+                                  width:
+                                    (roles.find((_, pi) => i == pi)?.displayName
+                                      .length ?? 0) *
+                                      10 +
+                                    10 +
+                                    'px',
+                                }}
+                                onChange={(e) =>
+                                  setRoles((prev) => [
+                                    ...prev.map((p, pi) =>
+                                      pi == i
+                                        ? { ...p, displayName: e.target.value }
+                                        : p
+                                    ),
+                                  ])
+                                }
+                                value={r.displayName}
+                              />
+                            </span>
+                            <span className="float-right">
+                              <FontAwesomeIcon
+                                icon={faTrash}
+                                onClick={() =>
+                                  setRoles((prev) => [
+                                    ...prev.filter((p, pi) => i !== pi),
+                                  ])
+                                }
+                              />
+                            </span>
+                            <span className="float-right pr-10">
+                              Can delete messages?{' '}
+                              <input
+                                type="checkbox"
+                                checked={roles
+                                  .find((_, pi) => i == pi)
+                                  ?.permissions.includes('message:delete')}
+                                onChange={() =>
+                                  setRoles((prev) => [
+                                    ...prev.map((p, pi) =>
+                                      pi == i
+                                        ? {
+                                            ...p,
+                                            permissions: p.permissions.includes(
+                                              'message:delete'
+                                            )
+                                              ? p.permissions.filter(
+                                                  (pr: Permission) =>
+                                                    pr !== 'message:delete'
+                                                )
+                                              : ([
+                                                  ...p.permissions,
+                                                  'message:delete',
+                                                ] as Permission[]),
+                                          }
+                                        : p
+                                    ),
+                                  ])
+                                }
+                              />
+                            </span>
+                          </div>
+                          <div className="pl-4 mt-2">
+                            <div className="text-sm text-[#877f87] mb-2">Members ({activeMembers.length})</div>
+                            <div className="flex flex-wrap gap-2 mb-3">
+                              {activeMembers.map((member) => (
+                                <div
+                                  key={'role-member-' + r.roleId + '-' + member.user_address}
+                                  className="flex items-center gap-2 bg-[rgba(0,0,0,0.3)] rounded-full px-3 py-1 text-sm"
+                                >
+                                  <img
+                                    src={member.user_icon || '/unknown.png'}
+                                    className="w-5 h-5 rounded-full"
+                                    alt={member.display_name}
+                                  />
+                                  <span>{member.display_name || 'Unknown'}</span>
+                                  <span
+                                    className="hover:bg-[rgba(255,255,255,0.2)] rounded-full w-5 h-5 flex items-center justify-center cursor-pointer text-xs"
+                                    onClick={() => removeMemberFromRole(r.roleId, member.user_address)}
+                                  >
+                                    ×
+                                  </span>
+                                </div>
+                              ))}
+                              {activeMembers.length === 0 && (
+                                <span className="text-sm text-[#877f87] italic">No members assigned</span>
+                              )}
+                            </div>
+                            <Button
+                              type="primary"
+                              onClick={() => setMemberSelectorRole(r.roleId)}
+                            >
+                              Add Members
+                            </Button>
+                          </div>
                         </div>
                       );
                     })}
@@ -1036,6 +1105,77 @@ const SpaceEditor: React.FunctionComponent<{
           }
         })()}
       </div>
+      {memberSelectorRole && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          onClick={() => setMemberSelectorRole(null)}
+        >
+          <div
+            className="bg-[#1a1a1a] rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-white">
+                Add Members to @
+                {roles.find((r) => r.roleId === memberSelectorRole)?.roleTag}
+              </h2>
+              <button
+                className="text-white hover:text-gray-400"
+                onClick={() => setMemberSelectorRole(null)}
+              >
+                <FontAwesomeIcon icon={faX} />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {spaceMembers
+                .filter((m) => m.inbox_address !== '')
+                .map((member) => {
+                  const currentRole = roles.find(
+                    (r) => r.roleId === memberSelectorRole
+                  );
+                  const isAssigned =
+                    currentRole?.members.includes(member.user_address) ?? false;
+                  return (
+                    <div
+                      key={'member-selector-' + member.user_address}
+                      className="flex items-center gap-3 p-3 bg-[rgba(0,0,0,0.3)] rounded-lg hover:bg-[rgba(0,0,0,0.4)] cursor-pointer"
+                      onClick={() =>
+                        toggleMemberInRole(memberSelectorRole, member.user_address)
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isAssigned}
+                        onChange={() =>
+                          toggleMemberInRole(memberSelectorRole, member.user_address)
+                        }
+                        className="w-5 h-5"
+                      />
+                      <img
+                        src={member.user_icon || '/unknown.png'}
+                        className="w-10 h-10 rounded-full"
+                        alt={member.display_name}
+                      />
+                      <div className="flex-1">
+                        <div className="text-white font-medium">
+                          {member.display_name || 'Unknown'}
+                        </div>
+                        <div className="text-sm text-[#877f87]">
+                          {member.user_address.substring(0, 20)}...
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <Button type="primary" onClick={() => setMemberSelectorRole(null)}>
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

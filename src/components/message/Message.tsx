@@ -12,6 +12,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faFaceSmileBeam,
   faReply,
+  faThumbtack,
   faTrash,
   faUnlock,
 } from '@fortawesome/free-solid-svg-icons';
@@ -45,6 +46,8 @@ type MessageProps = {
   submitMessage: (message: any) => Promise<void>;
   kickUserAddress?: string;
   setKickUserAddress?: React.Dispatch<React.SetStateAction<string | undefined>>;
+  onPinMessage?: (messageId: string) => void;
+  isPinned?: boolean;
 };
 
 const YTRegex = new RegExp(
@@ -77,6 +80,8 @@ export const Message = ({
   submitMessage,
   kickUserAddress,
   setKickUserAddress,
+  onPinMessage,
+  isPinned,
 }: MessageProps) => {
   const user = usePasskeysContext();
   const { spaceId } = useParams();
@@ -329,9 +334,19 @@ export const Message = ({
               >
                 <FontAwesomeIcon icon={faReply} />
               </div>
+              <div className="w-2 mr-2 text-center flex flex-col border-r border-r-1 border-[rgba(255,255,255,0.05)]"></div>
+              <div
+                onClick={() => {
+                  if (onPinMessage) {
+                    onPinMessage(message.messageId);
+                  }
+                }}
+                className="w-5 text-center hover:bg-[rgba(255,255,255,0.05)] rounded-md flex flex-col justify-around cursor-pointer"
+              >
+                <FontAwesomeIcon className={isPinned ? "text-white" : "text-gray-400"} icon={faThumbtack} />
+              </div>
               {canUserDelete && (
                 <>
-                  <div className="w-2 mr-2 text-center flex flex-col border-r border-r-1 border-[rgba(255,255,255,0.05)]"></div>
                   <div
                     onClick={() => {
                       submitMessage({
